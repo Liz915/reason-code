@@ -1,0 +1,7 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+logs/
+lora-reason-coder-v3/
