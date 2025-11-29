@@ -3,12 +3,16 @@ import asyncio
 from typing import Optional, List, Any, Dict
 from dataclasses import dataclass, field
 
-
-from llm import generate_code_candidates
-from sandbox import execute_code
-from evaluator import evaluate_code
-from config import MCTS_C
-from retriever import simple_retrieve 
+import structlog
+from src.reason_code.utils.logger import logger as global_logger
+logger = structlog.get_logger(__name__)
+from src.reason_code.utils.trace import trace_span
+from src.reason_code.models.llm import generate_code_candidates
+from src.reason_code.executor.sandbox import execute_code
+from src.reason_code.executor.evaluator import evaluate_code
+from src.reason_code.utils.config import MCTS_C
+from src.reason_code.agent.retriever import simple_retrieve 
+from src.reason_code.models.router import router
 
 @dataclass
 class Node:
@@ -37,25 +41,28 @@ class EnhancedMCTS:
             "syntax_checks": 0,
             "static_analyses": 0, 
             "runtime_tests": 0,
-            "early_rejects": 0
+            "early_rejects": 0,
+            "llm_calls": 0
         }
-
+    
+    @trace_span(span_name="mcts_run")
     async def run(self, test_runner: str):
-        print(f"🔍 开始MCTS搜索，模拟次数: {self.n_simulations}")
-        print("⚡ 优化模式: 分级评估循环")
+        logger.info("mcts_start", n_simulations=self.n_simulations, root_code_preview=self.root.code[:50])
         
         for i in range(self.n_simulations):
+            log = logger.bind(iteration=i)
             node = self._select(self.root)
             reward = await self._expand_and_simulate(node, test_runner)
             self._backpropagate(node, reward)
             
-            if (i + 1) % 5 == 0:  # 稍微频繁一点打印进度
-                self._print_progress(i + 1)
+            #记录关键节点
+            if (i + 1) % 5 == 0:  
+                log.info("mcts_progress", progress=f"{i+1}/{self.n_simulations}")
         
         best = self._get_best_child()
         final_code = best.code if best else self.root.code
         
-        self._print_final_stats()
+        logger.info("mcts_complete", best_wins=best.wins if best else 0)
         return final_code
 
     def _select(self, node: Node) -> Node:
@@ -66,19 +73,21 @@ class EnhancedMCTS:
     def _get_best_child(self):
         return max(self.root.children, key=lambda n: (n.wins / n.visits) if n.visits > 0 else -1, default=None)
 
+    @trace_span(span_name="expand_node")
     async def _expand_and_simulate(self, node: Node, test_runner: str) -> float:
         prompt = self._build_prompt(node, test_runner)
+        self.stats["llm_calls"] += 1
         # 并发请求 LLM 生成候选
         # 注意：llm.py 内部已经做了串行化处理以适应 MPS，这里无需改动接口
         candidates = await generate_code_candidates(prompt, n=self.n_candidates)
 
         # 并发评估所有候选
-        from evaluator import evaluate_candidates_async
+        from src.reason_code.executor.evaluator import evaluate_candidates_async
         eval_results = await evaluate_candidates_async(candidates, test_runner, prompt)
 
         best_reward = 0.0
 
-        from self_correction import attempt_fix
+        from src.reason_code.agent.reflexion import attempt_fix
 
         for cand, eval_result in zip(candidates, eval_results):
             
@@ -91,21 +100,28 @@ class EnhancedMCTS:
                 if failed_level == "level_3": # 运行时错误
                     error_msg = eval_result[failed_level]["message"]
                     
+                    self.stats["llm_calls"] += 1
                     # 尝试修复
                     fixed_code = await attempt_fix(cand, error_msg, test_runner)
                     
                     if fixed_code != cand:
                         # 重新评估修复后的代码
                         # 这里简单同步调用 evaluate，或者你可以封装成 await
-                        from evaluator import evaluate_code
+                        from src.reason_code.executor.evaluator import evaluate_code
                         new_result = evaluate_code(fixed_code, test_runner)
                         
                         if new_result["overall"]["reward"] > 0.7:
-                            print(f"✨ 修复成功! 得分提升: 0.7 -> {new_result['overall']['reward']}")
+                        # 记录关键里程碑：Reflexion 成功救活了代码
+                            logger.info(
+                                "reflexion_success", 
+                                score_improvement=f"0.7->{new_result['overall']['reward']}",
+                                fixed_level=failed_level
+                            )
                             final_code = fixed_code
                             final_result = new_result
-                        else:
-                            print("   修复未生效")
+                    else:
+                        # 记录一次无效的尝试
+                        logger.debug("reflexion_attempt_no_improvement")
 
             child = Node(code=final_code, parent=node)
             node.children.append(child)
@@ -127,7 +143,7 @@ class EnhancedMCTS:
             if reward > best_reward:
                 best_reward = reward
                 if reward == 1.0:
-                    print("  ✅ 找到完全通过的候选")
+                    logger.info("solution_found", reward=1.0, code_preview=final_code[:30])
         return best_reward
 
     def _update_stats(self, eval_result: dict):
@@ -176,16 +192,22 @@ class EnhancedMCTS:
         best_rate = (best_child.wins / best_child.visits) if best_child and best_child.visits > 0 else 0
         total_nodes = len(self.root.children) if self.root.children else 0
         
-        print(f"   进度: {current_iter}/{self.n_simulations}, "
-              f"最佳通过率: {best_rate:.2f}, 根节点分支: {total_nodes}")
+        logger.info("mcts_progress", current_iter=current_iter + 1, total_simulations=self.n_simulations, best_pass_rate=round(best_rate, 2), total_branches=total_nodes)
 
     def _print_final_stats(self):
-        print(f"📊 分级评估统计:")
-        print(f"   语法检查: {self.stats['syntax_checks']}次")
-        print(f"   静态分析: {self.stats['static_analyses']}次") 
-        print(f"   运行时测试: {self.stats['runtime_tests']}次")
-        print(f"   早期拒绝: {self.stats['early_rejects']}次")
-        
+        # 1. 先计算比率 (防止除以0报错)
         if self.stats['syntax_checks'] > 0:
             reject_rate = self.stats['early_rejects'] / self.stats['syntax_checks']
-            print(f"   早期拒绝率: {reject_rate:.1%}")
+        else:
+            reject_rate = 0.0
+
+        # 2. 打印日志
+        logger.info(
+            "mcts_statistics",
+            llm_calls=self.stats['llm_calls'],
+            syntax_checks=self.stats['syntax_checks'],
+            static_analyses=self.stats['static_analyses'],
+            runtime_tests=self.stats['runtime_tests'],
+            early_rejects=self.stats['early_rejects'],
+            early_reject_rate=round(reject_rate, 4) # 保留4位小数
+        )

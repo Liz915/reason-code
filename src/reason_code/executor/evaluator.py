@@ -149,7 +149,7 @@ class CodeEvaluator:
     def _runtime_test(self, code: str, test_runner: str):
         try:
             try:
-                from persistent_sandbox import PersistentSandbox
+                from src.reason_code.executor.sandbox import PersistentSandbox
 
                 if not hasattr(self, '_sandbox'):
                     self._sandbox = PersistentSandbox()

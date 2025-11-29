@@ -10,7 +10,6 @@ load_dotenv()
 
 # LLM配置
 LLM_API_KEY = os.getenv("LLM_API_KEY")
-# 如果没有key也让它过，因为我们现在主要用本地模型
 LLM_API_BASE = os.getenv("LLM_API_BASE", "https://api.deepseek.com/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-coder")
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "30"))

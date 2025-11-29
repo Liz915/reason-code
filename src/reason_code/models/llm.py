@@ -10,7 +10,12 @@ import re
 import ast
 import asyncio
 import logging
+import structlog
+from src.reason_code.utils.logger import logger as global_logger
+from src.reason_code.models.base import BaseModel
+logger = structlog.get_logger(__name__)
 from typing import List, Optional, Dict, Any
+from src.reason_code.utils.trace import trace_span
 from datetime import datetime, timedelta
 import httpx
 
@@ -34,14 +39,6 @@ _CACHE_TTL_SECONDS = 300
 _MAX_CONCURRENT_REQUESTS = 5
 _semaphore = asyncio.Semaphore(_MAX_CONCURRENT_REQUESTS)
 
-# 日志配置
-logger = logging.getLogger("llm")
-if not logger.hasHandlers():
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 # 尝试导入本地推理依赖
 try:
@@ -49,10 +46,10 @@ try:
     from transformers import AutoTokenizer, AutoModelForCausalLM
     from peft import PeftModel
     LOCAL_INFERENCE_AVAILABLE = True
-    logger.info("✅ 本地推理依赖可用")
+    logger.info("dependency_check", status="local_inference_available")
 except ImportError as e:
     LOCAL_INFERENCE_AVAILABLE = False
-    logger.warning(f"⚠️ 本地推理依赖不可用: {e}")
+    logger.warning("dependency_check_failed", error=str(e), status="fallback_to_api")
 
 class TTLCache:
     def __init__(self, maxsize: int = _CACHE_MAXSIZE, ttl: int = _CACHE_TTL_SECONDS):
@@ -82,8 +79,13 @@ class TTLCache:
 
 _candidate_cache = TTLCache()
 
-class LocalLoraModel:
+class LocalLoraModel(BaseModel):
     """LoRA本地模型管理 - Qwen 适配版"""
+
+    def count_tokens(self, text: str) -> int:
+        if not self.tokenizer:
+            return 0
+        return len(self.tokenizer.encode(text))
     
     def __init__(self):
         self.model = None
@@ -101,7 +103,7 @@ class LocalLoraModel:
             return False
         # 检查路径是否存在
         if not os.path.exists(LORA_MODEL_PATH):
-            logger.warning(f"LoRA模型路径不存在: {LORA_MODEL_PATH} (请先运行 finetune_lora.py)")
+            logger.warning("lora_model_not_found", path=LORA_MODEL_PATH, hint="run finetune_lora.py")
             return False
         return True
     
@@ -111,7 +113,7 @@ class LocalLoraModel:
             return False
         
         try:
-            logger.info(f"🚀 加载基座模型: {BASE_MODEL_NAME} 到 {self.device}")
+            logger.info("model_loading_start", base_model=BASE_MODEL_NAME, device=self.device)
             
             # 加载 Tokenizer
             self.tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_NAME)
@@ -127,7 +129,7 @@ class LocalLoraModel:
                 device_map=self.device
             )
             
-            logger.info(f"🚀 加载LoRA权重: {LORA_MODEL_PATH}")
+            logger.info("loading_lora_weights", path=LORA_MODEL_PATH)
             # 加载 LoRA 适配器
             self.model = PeftModel.from_pretrained(base_model, LORA_MODEL_PATH)
             self.model.eval() # 切换到推理模式
@@ -137,9 +139,10 @@ class LocalLoraModel:
             return True
             
         except Exception as e:
-            logger.error(f"❌ LoRA模型加载失败: {e}")
+            logger.error("model_loading_failed", error=str(e))
             return False
     
+    @trace_span(span_name="llm_generate_local")
     def generate(self, code_snippet: str, num_return_sequences: int = 3) -> List[str]:
         """使用LoRA模型生成代码 - 串行生成以避免MPS内存溢出"""
         if not self._initialized and not self.initialize():
@@ -172,7 +175,6 @@ class LocalLoraModel:
                             **inputs,
                             max_new_tokens=512,
                             num_return_sequences=1,  # 每次只生成 1 个
-                            max_length=2048,
                             temperature=0.7,
                             top_p=0.9,
                             do_sample=True,
@@ -196,7 +198,7 @@ class LocalLoraModel:
                         candidates.append(code)
                     
                 except Exception as inner_e:
-                    logger.warning(f"单次生成失败: {inner_e}")
+                    logger.warning("generation_attempt_failed", error=str(inner_e))
                     continue
                 finally:
                     # === 显存清理 ===
@@ -208,12 +210,15 @@ class LocalLoraModel:
             # 去重
             unique_candidates = list(set(candidates))
             if len(unique_candidates) > 0:
-                logger.info(f"✅ LoRA生成 {len(unique_candidates)} 个有效候选")
+                logger.info("generation_complete", count=len(unique_candidates), method="lora_local")
             return unique_candidates
             
         except Exception as e:
-            logger.error(f"❌ LoRA生成主循环失败: {e}")
+            logger.error("generation_loop_failed", error=str(e))
             return []
+
+    def name(self) -> str:
+        return "Qwen-1.5B-LoRA"
     
     def _extract_generated_code(self, text: str) -> str:
         """从生成文本中提取代码"""
@@ -261,34 +266,53 @@ _local_model = LocalLoraModel()
 async def generate_code_candidates(prompt: str, n: int = 3, use_lora: bool = None, debug: bool = False) -> List[str]:
     """
     生成代码修复候选
-    优先使用LoRA本地推理，失败时回退到API
+    集成 Model Router：根据任务复杂度自动选择模型
     """
     if debug:
         logger.setLevel(logging.DEBUG)
     
-    # 决定是否使用LoRA
-    if use_lora is None:
-        use_lora = USE_LOCAL_LORA
-    
+    # 1. 检查缓存 (保持不变)
     cached = _candidate_cache.get(prompt)
     if cached:
-        logger.debug(f"🎯 缓存命中，返回 {len(cached)} 个候选")
+        logger.debug("cache_hit", count=len(cached))
         return cached
+
+    # 2. 引入 Router (延迟导入，防止循环引用)
+    from src.reason_code.models.router import router
+
+    # 3. 判断任务复杂度 (Heuristic / 启发式策略)
+    # 逻辑：如果 Prompt 很长(>1000字符)，或者包含复杂的关键词，算 Hard 任务
+    is_hard_task = len(prompt) > 1000 or "class " in prompt
+    complexity = "hard" if is_hard_task else "easy"
+
+    # 4. 获取模型实例 (Router 会决定给 Qwen 还是 GPT-4)
+    model = router.get_model(complexity)
     
-    # 尝试LoRA本地推理
-    if use_lora and _local_model.is_available():
-        logger.debug("🚀 使用LoRA本地推理")
-        try:
-            loop = asyncio.get_running_loop()
-            candidates = await loop.run_in_executor(None, _local_model.generate, prompt, n)
+    logger.info("model_routed", selected_model=model.name(), complexity=complexity)
+
+    # 5. 执行推理
+    # 只要模型可用，就尝试生成
+    # 注意：这里我们假设所有 Model 类都继承自 BaseModel 并实现了 generate 和 is_available
+    # 如果 Base 没定义 is_available，可以默认 True 或 try-catch
+    try:
+        loop = asyncio.get_running_loop()
+        
+        # 统一调用接口：model.generate
+        candidates = await loop.run_in_executor(None, model.generate, prompt, n)
+        
+        if candidates:
+            _candidate_cache.set(prompt, candidates)
+            return candidates
+        else:
+            logger.warning("model_returned_empty", model=model.name())
             
-            if candidates:
-                _candidate_cache.set(prompt, candidates)
-                return candidates
-            else:
-                logger.debug("LoRA生成结果无效或为空，回退到API")
-        except Exception as e:
-            logger.debug(f"LoRA推理失败: {e}，回退到API")
+    except Exception as e:
+        logger.error("inference_failed", model=model.name(), error=str(e))
+
+    # 6. 回退机制 (Fallback)
+    # 如果 Router 选的模型挂了，或者没生成出来，走最后的兜底逻辑
+    # (比如强制切回 API，或者返回简单的规则修复)
+    logger.warning("triggering_final_fallback")
     
     # 回退到API
     return await _generate_via_api(prompt, n, debug)
@@ -298,7 +322,7 @@ async def _generate_via_api(prompt: str, n: int = 3, debug: bool = False) -> Lis
     """通过API生成候选 (Fallback)"""
     # ... (保持原有的 API 调用代码不变) ...
     # 重点是上面的 LocalLoraModel 类和 generate_code_candidates 函数。
-    logger.warning("触发 API 回退 (当前为模拟实现)")
+    logger.warning("fallback_triggered", reason="local_model_unavailable_or_failed")
     fallback = _intelligent_fallback_generation(prompt, n)
     return fallback
 
@@ -313,4 +337,3 @@ def _intelligent_fallback_generation(prompt: str, n: int) -> List[str]:
         candidates.append(candidates[0] if candidates else "# Failed to generate")
     return candidates
 
-# ... (请保留 _has_valid_api_key, _call_llm_api 等原有函数) ...

@@ -1,7 +1,67 @@
-.env
-venv/
+# --- Python 通用 ---
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- 虚拟环境 (绝对不能传) ---
+venv/
+env/
+ENV/
+.venv/
+
+# --- 环境变量 & 敏感信息 (绝对不能传) ---
+.env
+.env.local
+
+# --- Mac 系统文件 ---
 .DS_Store
+
+# --- IDE 配置 ---
+.vscode/
+.idea/
+
+# --- 运行时日志 & 临时数据 ---
 logs/
+*.log
+*.jsonl
+*.csv
+humaneval_results_*.jsonl
+results_*.jsonl
+
+# --- 大模型权重 (文件太大，不能传) ---
 lora-reason-coder-v3/
+*.pth
+*.bin
+*.safetensors
+*.pt
+
+# --- Docker ---
+.docker/
+
+# --- Phoenix / OpenTelemetry ---
+.phoenix/
+phoenix.db
+
+# --- 测试缓存 ---
+.pytest_cache/
+.coverage
+htmlcov/

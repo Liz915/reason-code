@@ -5,8 +5,11 @@ import sys
 import os
 import re
 
-# 导入你的 LLM 接口
-from llm import _local_model
+# 导入 LLM 接口
+from src.reason_code.models.llm import _local_model
+import structlog
+from src.reason_code.utils.logger import logger as global_logger
+logger = structlog.get_logger(__name__)
 
 def construct_fix_prompt(code: str, error_msg: str, test_runner: str) -> str:
     """构造修复 Prompt，利用报错信息"""
@@ -39,7 +42,7 @@ async def attempt_fix(code: str, error_msg: str, test_runner: str) -> str:
     # 1. 先定义变量，解决"红线"问题 
     last_error = error_msg.splitlines()[-1] if error_msg else 'Unknown Error'
     # 2. 再打印日志
-    print(f"🔧 触发自我修复，错误: {last_error}")
+    logger.info("reflexion_triggered", error_msg=last_error)
 
     prompt = construct_fix_prompt(code, error_msg, test_runner)
 
@@ -49,20 +52,21 @@ async def attempt_fix(code: str, error_msg: str, test_runner: str) -> str:
     
         if candidates:
             fixed_code = candidates[0]
-        
-        
-            print("-" * 20 + " 尝试的修复方案 " + "-" * 20)
-            print(fixed_code)
-            print("-" * 60)
+            logger.debug(
+                    "reflexion_proposal", 
+                    fixed_code_snippet=fixed_code[:100] + "...", # 只记录前100字符预览，防止日志爆炸
+                    full_code=fixed_code 
+                )
+            
         
         # 简单的防呆检查：如果没有 def，可能是模型只输出了片段
             if "def " not in fixed_code:
-                print("⚠️ 修复失败: 模型未输出完整函数定义")
+                logger.warning("reflexion_failed_structure", reason="missing 'def' in output")
                 return code
             
             return fixed_code
         
     except Exception as e:
-        print(f"⚠️ 自我修复生成失败: {e}")
+        logger.error("reflexion_exception", error=str(e))
     
     return code
