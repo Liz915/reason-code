@@ -1,7 +1,7 @@
 # Reason-Code: Reliable Code Generation via Test-Driven MCTS
 
 <p align="center">
-  <img src="figures/hero_banner.png" width="100%" alt="Reason-Code Architecture">
+  <img src="Figures/hero_banner.png" width="100%" alt="Reason-Code Architecture">
 </p>
 
 ## Overview
@@ -17,7 +17,7 @@ We propose an inference-time framework that treats code generation as a search p
 ## 📂 Project Structure
 The repository is organized to separate core logic, benchmarking, and experimental data.
 
-\```
+```
 reason-code/
 ├── src/reason_code/
 │   ├── agent/           # MCTS Core: Node expansion, UCB1, Backpropagation
@@ -31,7 +31,7 @@ reason-code/
 ├── examples/            # Demos: End-to-end workflow examples
 ├── data/final/          # Artifacts: The 7 core log files used in the paper
 └── requirements.txt
-\```
+```
 
 ## 📊 Main Results
 Our method matches the performance of computationally expensive baselines while maintaining a low inference cost suitable for edge deployment.
@@ -77,7 +77,7 @@ Reason-Code goes beyond simple bug fixes; it can perform structural refactoring 
 
 **Baseline (Failed) ❌**
 Error: `NameError: name 'gap_insertion_sort' is not defined`
-\`\`\`python
+```python
 def shell_sort(my_list):
     sub = len(my_list) // 2
     while sub > 0:
@@ -88,11 +88,11 @@ def shell_sort(my_list):
 
 def gap_insertion_sort(list, start, gap):
     # ...
-\`\`\`
+```
 
 **Reason-Code (Fixed) ✅**
 Result: `Pass`
-\`\`\`python
+```python
 def shell_sort(my_list):
     n = len(my_list)
     gap = n // 2
@@ -107,26 +107,26 @@ def shell_sort(my_list):
             my_list[j] = temp
         gap //= 2
     return my_list
-\`\`\`
+```
 
 ## 🚀 Quick Start (System Demo)
 
 ### 1. Installation
-\`\`\`bash
+```bash
 pip install -r requirements.txt
-\`\`\`
+```
 
 ### 2. Run the Workflow Demo
 Reason-Code includes a workflow engine to chain tools. The example below runs a "Search -> Reason -> Code" pipeline.
-\`\`\`bash
+```bash
 python examples/demo_workflow.py
-\`\`\`
+```
 
 ### 3. Production Deployment (API)
 For industrial integration, the agent is wrapped in a FastAPI service. This enables integration into IDEs or microservice architectures.
-\`\`\`bash
+```bash
 python src/reason_code/api/app.py
-\`\`\`
+```
 - **Endpoint:** `POST /reason_and_code`
 - **Observability:** The service is instrumented with Phoenix (OpenInference) for real-time tracing of the MCTS decision tree.
 
@@ -134,23 +134,23 @@ python src/reason_code/api/app.py
 To verify the "Zero Regression" and "Net Gain" claims using the provided data:
 
 **HumanEval Analysis**
-\`\`\`bash
+```bash
 python benchmark/analyze_fixes.py
-\`\`\`
+```
 
 **MBPP Analysis**
-\`\`\`bash
+```bash
 python benchmark/analyze_mbpp_fixes.py
-\`\`\`
+```
 
 **Expected Output (MBPP):**
-\```
+```
 Baseline (N=1) Passed: 183
 MCTS (N=3) Passed:     187
 --------------------------------
 MCTS Exclusive Fixes:  4
 MCTS Regressions:      0
-\```
+```
 *(This confirms the robustness of the Conditional Budgeting strategy)*
 
 ## 📂 Script Guide
