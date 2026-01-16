@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reason-code"
+version = "0.1.0"
+description = "On-Device System 2 Reasoning Agent"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "transformers",
+    "peft",
+    "docker",
+    "fastapi",
+    "uvicorn",
+    "streamlit",
+    "python-dotenv"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reason_code"]
