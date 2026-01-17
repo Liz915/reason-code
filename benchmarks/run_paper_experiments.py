@@ -54,21 +54,12 @@ async def run_majority_voting(problem, n_samples):
     # 在实际论文中，Majority Voting 通常指：如果有 5 个候选通过了测试，选其中出现次数最多的。
     # 但在 HumanEval 这种只有 hidden test 的场景下，Best-of-N (Pass@k) 是更标准的对比指标。
     # 这里我们模拟：如果有任何一个代码通过了 visible tests (如果有的话)，就选它。
-    # 但因为 HumanEval prompt 里没给 visible test，我们只能依靠简单的静态检查或随机选择。
-    # **关键差异**：这里没有 MCTS 的 "Reflexion/Repair" 步骤。
-    
-    # 为了公平对比 EAAI 论文，我们通常对比 "Pass@k" (尝试 k 次能否做对)。
-    # 但如果必须输出一个结果，我们这里简单地返回第一个生成的（对于 N=1 Baseline），
-    # 或者如果你想对比 "Best-of-N"，你需要把所有 candidates 都存下来后续算分。
     
     # 简化策略：为了对比 N=10，我们将这 N 个都存入结果文件，后续 calculate_metrics 时计算 Pass@k
-    # 但为了兼容你的 jsonl 格式 (one completion per task)，我们这里只返回第一个。
-    # 等等！为了做 Comparison 2 (Majority Voting)，你需要生成的不仅仅是一个结果。
-    
-    # 修正策略：对于 Majority Voting，我们在 MCTS 框架下可以理解为：
+    # 对于 Majority Voting，我们在 MCTS 框架下可以理解为：
     # 纯随机生成 N 个，不做任何反思修改。
     # 我们这里简单返回第一个，但在 generate_code_candidates 内部其实是并行的。
-    # 如果你要严格的 Majority Voting 实验，通常需要在此时就把 N 个都测一遍。
+    # 严格的 Majority Voting 实验，通常需要在此时就把 N 个都测一遍。
     
     return best_code # 仅返回第一个，用于 N=1 baseline。对于 N=10 comparison，见下文 main 逻辑调整。
 
@@ -86,14 +77,12 @@ async def run_one_problem(problem, output_file, args):
             # Qwen-1.5B (Pass@1) -> run with --n 1 --mode baseline
             # Majority Voting (N=10) -> run with --n 10 --mode baseline
             # 注意：如果是 N=10 的 baseline，我们需要生成 10 个，看是否有一个对。
-            # 为了在 jsonl 里体现，建议把 10 个都写进去，或者由评测脚本处理。
             # 这里为了简单，如果是 baseline 且 n>1，我们生成 n 个，用 list 存起来
             
             prompt = f"{problem['prompt']}\n    # TODO: Implement {problem['entry_point']}\n"
             candidates = await generate_code_candidates(prompt, n=args.n)
             
-            # 存入 list 格式，后续 score_real.py 需要改一下来支持 list，或者我们只存第一个
-            # EAAI 论文对比通常是：
+            # 对比:
             # 1. Baseline: n=1 生成 1 个
             # 2. Reason-Code: n=10 经过搜索后输出 1 个
             # 3. Best-of-N: n=10 生成 10 个 (看有没有 1 个对)
@@ -127,7 +116,7 @@ async def main():
     parser.add_argument("--range_end", type=int, default=None)
     args = parser.parse_args()
 
-    # 不同的实验输出到不同的文件，防止混淆！
+    # 不同的实验输出到不同的文件
     output_file = f"results_{args.mode}_n{args.n}.jsonl"
     if os.path.exists(output_file):
         os.remove(output_file)
