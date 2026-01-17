@@ -22,8 +22,6 @@ def extract_code(text):
 
 def check_pass(code, task_data):
     if not code: return False
-    
-    # 🔥 核心修复：移除 try-except 缩进块
     # 直接拼接测试代码。如果 assert 失败，脚本会报错退出，
     # 只要没打印 "ALL_TESTS_PASSED"，execute_code 就知道是挂了。
     full_script = f"""
