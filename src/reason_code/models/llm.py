@@ -52,7 +52,7 @@ class LocalMLXModel:
         if "max_tokens" in supported_args: gen_kwargs["max_tokens"] = max_tokens
         elif "max_new_tokens" in supported_args: gen_kwargs["max_new_tokens"] = max_tokens
 
-        # 🔥 科学严谨的采样逻辑 🔥
+        
         # 只有在 N>1 或者 明确要求采样 (MCTS/Reflexion) 时才开启 Randomness
         do_sample = (num_return_sequences > 1) or force_sample
         
@@ -67,7 +67,7 @@ class LocalMLXModel:
             if "top_p" in supported_args: gen_kwargs["top_p"] = 0.95 
             # 移除 top_k 以允许长尾探索 (除非你觉得太发散可以加回 top_k=50)
         else:
-            # 🚨 严格 Baseline 定义：N=1 必须是 Greedy (Temp=0)
+            # Baseline 定义：N=1 必须是 Greedy (Temp=0)
             # 即使外部传入了 0.7，只要 force_sample=False 且 N=1，这里也会强制归零
             if "temperature" in supported_args: gen_kwargs["temperature"] = 0.0
             elif "temp" in supported_args: gen_kwargs["temp"] = 0.0
@@ -101,7 +101,7 @@ async def generate_code_candidates(prompt: str, n: int = 1, mode: str = "default
     if mode == "reflexion": max_tokens = 800 
     else: max_tokens = 640 
     
-    # 🔥 关键修复：Default (Baseline) 必须是不采样的
+    # Default (Baseline) 必须是不采样的
     # 只有 reflexion 和 mcts 明确需要采样能力
     should_force_sample = (mode in ["reflexion", "mcts"])
     
