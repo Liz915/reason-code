@@ -31,7 +31,7 @@ def format_mbpp_to_jsonl():
         print(f"❌ 加载 sanitized 失败: {e}")
         return
 
-    # 🔥 调试信息：打印第一条数据的 Key，确保字段名正确
+    # 打印第一条数据的 Key，确保字段名正确
     if len(dataset) > 0:
         print(f"📋 数据集字段预览: {list(dataset[0].keys())}")
 
@@ -44,7 +44,7 @@ def format_mbpp_to_jsonl():
     for item in tqdm(dataset):
         task_id = f"MBPP/{item['task_id']}"
         
-        # 🔥 修正点：MBPP Sanitized 通常用 'prompt' 存储描述
+        # MBPP Sanitized 通常用 'prompt' 存储描述
         # 如果 'text' 不存在，尝试 'prompt'，再不行用空字符串防止报错
         description = item.get('text') or item.get('prompt') or ""
         
