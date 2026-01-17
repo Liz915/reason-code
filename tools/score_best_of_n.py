@@ -16,7 +16,7 @@ def extract_code_content(text):
     if not text:
         return ""
 
-    # 🔥 核心修复：清洗 Qwen 的特殊结束符
+    # 清洗 Qwen 的特殊结束符
     text = text.replace("<|im_end|>", "")
 
     # 1. 标准 Markdown
