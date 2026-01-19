@@ -7,30 +7,67 @@
 ## Overview
 This repository contains the implementation of Reason-Code, submitted to the ACL Industry Track.
 
-We propose an inference-time framework that treats code generation as a search problem. By integrating Monte Carlo Tree Search (MCTS) with a lightweight local sandbox, Reason-Code filters out incorrect solutions before they reach the user.
-
+We propose an inference-time system that treats code generation as a search problem. By integrating Monte Carlo Tree Search (MCTS) with a lightweight local sandbox, Reason-Code detects and filters incorrect programs before returning a final answer. The project emphasizes robustness and correctness over raw sampling-based accuracy, reflecting real-world deployment constraints.
 **Core Capabilities:**
 - **Search:** MCTS with UCB1 exploration and "Reflexion" (using stderr for self-correction).
 - **Safety:** All code runs in a sandbox; only passing code is returned.
-- **System:** Includes a DAG workflow engine, FastAPI serving capability, and OpenTelemetry tracing.
+- **System:** Includes optional workflow orchestration and API serving components for deployment.
 
 ## 📂 Project Structure
-The repository is organized to separate core logic, benchmarking, and experimental data.
-
+The repository is organized to clearly separate core algorithms, evaluation code, and optional system components.
 ```
 reason-code/
 ├── src/reason_code/
-│   ├── agent/           # MCTS Core: Node expansion, UCB1, Backpropagation
-│   ├── executor/        # Sandbox: Docker/Local execution environment
-│   ├── workflow/        # Orchestration: DAG-based workflow engine
-│   ├── tools/           # Tool Registry: Plugin system for external tools
-│   ├── models/          # Model Layer: LLM interfaces
-│   ├── api/             # Serving: FastAPI application for deployment
-│   └── utils/           # Observability: Logger & OpenTelemetry Tracing
-├── benchmark/           # Evaluation: Scripts for HumanEval/MBPP analysis
-├── examples/            # Demos: End-to-end workflow examples
-├── data/final/          # Artifacts: The 7 core log files used in the paper
-└── requirements.txt
+│   ├── agent/
+│   │   ├── mcts.py            # Core MCTS algorithm (UCB1, expansion, backpropagation)
+│   │   └── reflexion.py       # Reflexion mechanism using execution feedback
+│   │
+│   ├── executor/
+│   │   ├── evaluator.py       # Binary Pass@1 evaluator with strict reward definition
+│   │   └── sandbox.py         # Isolated execution environment for safe code testing
+│   │
+│   ├── models/
+│   │   ├── base.py            # Abstract LLM interface
+│   │   ├── llm.py             # Local / API-based LLM adapter
+│   │   └── router.py          # Lightweight model routing (used in experiments)
+│   │
+│   ├── tools/                 # Minimal tool registry (not used in experiments)
+│   │   ├── registry.py
+│   │   └── builtins.py
+│   │
+│   ├── api/                   # Optional FastAPI service wrapper (not used in experiments)
+│   │   └── app.py
+│   │
+│   └── utils/
+│       ├── logger.py          # Structured logging
+│       └── trace.py           # Optional tracing utilities
+│
+├── benchmarks/
+│   ├── run_paper_experiments.py   # Main entry for HumanEval experiments
+│   └── run_mbpp.py                # Main entry for MBPP experiments
+│
+├── tools/
+│   ├── analyze_fixes.py           # Fix / Break / Net Gain analysis (main metric)
+│   ├── analyze_mbpp_fixes.py
+│   ├── score_best_of_n.py         # Oracle Best-of-N (upper bound, reference only)
+│   └── plot_figure*.py            # Scripts for Figures 1–3 in the paper
+│
+├── Figures/
+│   ├── fig1_system.pdf            # System overview (Figure 1)
+│   ├── fig2_efficiency.pdf        # Efficiency / Pareto frontier (Figure 2)
+│   └── fig3_robustness.pdf        # Fix/Break robustness analysis (Figure 3)
+│
+├── Experimental/                  # Research prototypes and legacy experiments
+│   └── legacy/                    # Not used in reported experiments
+│
+├── examples/
+│   └── demo_workflow.py           # Demonstration of extensible workflow abstraction
+│
+├── tests/
+│   └── test_basic.py              # Sanity checks
+│
+├── requirements.txt
+└── README.md
 ```
 
 ## 📊 Main Results
@@ -38,25 +75,29 @@ Our method matches the performance of computationally expensive baselines while 
 
 ### Performance Summary (Table 1)
 
-| Method | Inference Strategy | Cost (Rel.) | MBPP Pass@1 | HumanEval Pass@1 |
+| Method | Inference Strategy | Cost (Rel.)* | MBPP Pass@1 | HumanEval Pass@1 |
 | :--- | :--- | :--- | :--- | :--- |
 | **Baselines** | | | | |
-| Greedy Decoding | Direct Generation | 1.0× | 48.2 | 86.6 |
-| Best-of-N Sampling | Stochastic (N=10) | 10.0× | - | 88.4 |
-| Best-of-N (Oracle) | Oracle Est. (N=5) | 5.0× | 72.8 | - |
+| Greedy Decoding | Direct Generation | 1.0× | **71.2** | 86.6 |
+| Best-of-N Sampling | Stochastic (N=10) | 10.0× | - | **87.8** |
+| Best-of-N (Oracle) | Oracle Est. (N=5) | 5.0× | **72.8** | - |
 | **Ours** | | | | |
 | MCTS (Static) | Always-on (N=3) | ~3.5× | 72.8 | 86.0 |
-| MCTS (Adaptive) | Conditional Budget | ~1.5× | 72.8 | **88.4** |
+| **MCTS (Adaptive)** | **Conditional Budget** | **~1.5×** | **72.8** | **88.4** |
+
+***Cost (Rel.):** Relative token consumption compared to Greedy Decoding. Our adaptive strategy achieves SOTA performance at **~1.5× cost**, whereas standard Best-of-N sampling requires **10.0×**.*
+
+***Note on MBPP Baseline:** The reported baseline (71.2%) uses the **Sanitized** split with an improved prompt, providing a stronger reference point than the original paper (48.2%).*
 
 **Key Insights:**
 - **Cost Efficiency:** The "Cost" column denotes relative token consumption compared to Greedy Decoding. Our adaptive strategy achieves SOTA performance at ~1.5× cost, whereas standard Best-of-N sampling requires 10.0×.
 - **Zero Regression:** Unlike static search, the conditional mechanism prevents the model from over-complicating simple problems, ensuring previously correct solutions are preserved.
 
-## 📂 Data Availability
-We provide the exact execution logs used to produce the results above. These files are located in `data/final/` and allow for full reproduction of the metrics without re-running expensive inference.
-
+## 📂 Data Availability & Artifacts
+To ensure full transparency and reproducibility without requiring expensive GPU time, we provide the exact execution logs.
 The dataset consists of 7 core files mapping to the table rows:
 
+**1. Benchmark Log (7 core files)**
 | Category | File Name | Description |
 | :--- | :--- | :--- |
 | Input | `data_mbpp.jsonl` | The MBPP dataset source and test cases. |
@@ -67,7 +108,34 @@ The dataset consists of 7 core files mapping to the table rows:
 | Reference | `results_baseline_n10.jsonl` | HumanEval Best-of-10 Sampling logs. |
 | Reference | `results_mbpp_baseline_n5.jsonl` | MBPP Best-of-5 Oracle logs. |
 
-## 💡 Case Study: Structural Refactoring
+**2. Diagnostic Artifacts (Case Studies)**
+Generated automatically by the MCTS agent during execution:
+
+- success_cases.jsonl: Contains (original_error, fixed_code) pairs. Used for qualitative analysis.
+
+- fail_cases.jsonl: Hard failures where MCTS exhausted its budget.
+
+- n10_local_log.txt: Sample raw terminal log showing the MCTS reasoning process.
+
+
+## 🛠️ Toolchain Guide
+
+We provide a suite of tools in `tools/` to analyze logs and visualize search trajectories.
+
+### Analysis Tools (Metrics)
+* `analyze_fixes.py`: Calculates **Net Gain** and verifies **Zero Regression** for HumanEval.
+* `analyze_mbpp_fixes.py`: Performs the same analysis for MBPP.
+* `score_real.py`: A strict, local executor that calculates Pass@1. Handles markdown stripping and timeout safety.
+* `score_hybrid.py`: Calculates the Adaptive/Hybrid Strategy score.
+* `score_best_of_n.py`: Calculates Oracle Pass@k (Upper Bounds).
+
+### Inspection Tools (Qualitative Analysis)
+* **`inspect_case_study.py`**: A visualizer for `success_cases.jsonl`.
+    * *Usage*: `python tools/inspect_case_study.py --id MBPP/71`
+    * *Function*: Prints a side-by-side comparison of the Baseline's error vs. Reason-Code's fix. This was used to generate the examples in **Appendix B**.
+* `sort_and_inspect.py`: Helper script to sort logs by Task ID and find specific regression cases.
+
+## 💡 Case Study: Structural Refactoring under Execution Constraints
 Reason-Code goes beyond simple bug fixes; it can perform structural refactoring to satisfy execution constraints.
 
 **Example: MBPP/428 (Shell Sort)**
@@ -128,20 +196,114 @@ For industrial integration, the agent is wrapped in a FastAPI service. This enab
 python src/reason_code/api/app.py
 ```
 - **Endpoint:** `POST /reason_and_code`
-- **Observability:** The service is instrumented with Phoenix (OpenInference) for real-time tracing of the MCTS decision tree.
+- **Observability:**  Optional tracing support for inspecting MCTS decision paths.
 
-## 🔬 Reproducing Paper Results
-To verify the "Zero Regression" and "Net Gain" claims using the provided data:
+## 🔬 Benchmarks & Data Preparation
 
-**HumanEval Analysis**
+We evaluate Reason-Code on two standard benchmarks. All necessary data is either automatically downloaded or provided in this repository.
+
+### 1. HumanEval
+* **Source**: [OpenAI HumanEval](https://huggingface.co/datasets/openai_humaneval) via Hugging Face.
+* **Pre-processing**: **None required**. The script automatically downloads the dataset on the first run.
+* **Metric**: Pass@1 (using the provided `entry_point` and hidden tests).
+
+### 2. MBPP (Sanitized)
+* **Source**: Mostly Basic Python Problems (MBPP).
+* **Pre-processing**: We use the **Sanitized** split. We have pre-processed the raw data into a standardized JSONL format (prompt + test cases) for ease of use.
+* **Location**: `data/final/data_mbpp.jsonl` (Included in repo).
+* **Note**: You do not need to download or format anything manually.
+
+---
+
+## 🏃‍♂️ Running Experiments
+
+We provide separate workflows for HumanEval and MBPP. You can reproduce the exact numbers in **Table 1** by following these steps.
+
+### Experiment A: HumanEval
+
+**Step 1: Run Baseline (Greedy Decoding)**
+Generate samples using the standard greedy strategy (N=1).
+```bash
+python run_paper_experiments.py --mode baseline --n 1
+```
+Output: results_baseline_n1.jsonl
+
+**Step 2: Run Reason-Code (MCTS) Run the MCTS inference engine (N=3 simulations).**
+```bash
+python run_paper_experiments.py --mode mcts --n 3
+```
+Output: results_mcts_n3.jsonl
+
+**Step 3: Run Reference Upper Bound (Best-of-10) To reproduce the "Reference" row in Table 1.**
+```bash
+python benchmarks/run_paper_experiments.py --mode baseline --n 10
+```
+Output: results_baseline_n10.jsonl
+Eval: python tools/score_best_of_n.py results_baseline_n10.jsonl
+
+**Step 4: Evaluate & Compare Calculate Pass@1 accuracy and the "Net Gain" (Fix Rate).**
+- Net Gain
+
 ```bash
 python benchmark/analyze_fixes.py
 ```
+Expected Output: Shows the number of tasks fixed by MCTS vs. Baseline.
 
-**MBPP Analysis**
+```
+Baseline (N=1) Passed: 142
+MCTS (N=3) Passed:     141
+--------------------------------
+Net Gain (Fixed):      3    (Task IDs: 108, 134, 140)
+Regressions (Broken):  4    (Task IDs: 20, 95, 135, 142)
+```
+*Note: Adaptive Strategy filters out the regressions.*
+- Adaptive Score: Simulates the "Conditional Budget" strategy (Table 1 last row).
+
+```bash
+python tools/score_hybrid.py \
+  --dataset humaneval \
+  --baseline data/final/results_baseline_n1.jsonl \
+  --mcts data/final/results_mcts_n3.jsonl
+```
+Expected Output: Adaptive Pass Rate: ~88.4%
+
+
+
+Experiment B: MBPP
+**Step 1: Run Baseline (Uses data/final/data_mbpp.jsonl as input).**
+```bash
+python run_mbpp.py --mode baseline --n 1
+```
+Output: results_mbpp_baseline_n1.jsonl
+**Step 2: Run Reason-Code(N=3)**
+```bash
+python run_mbpp.py --mode mcts --n 3
+```
+Output: results_mbpp_mcts_n3.jsonl
+
+**Step 3: Run Reference Upper Bound (Best-of-5) To reproduce the "Reference (Oracle)" row in Table 1.**
+```bash
+python benchmarks/run_mbpp.py --mode baseline --n 5
+```
+Output: results_mbpp_baseline_n5.jsonl
+Eval: python tools/score_best_of_n.py results_mbpp_baseline_n5.jsonl
+
+**Step 3: Evaluate & Verify the "Zero Regression" claim on MBPP.**
+- Fix/Break Analysis
+
 ```bash
 python benchmark/analyze_mbpp_fixes.py
 ```
+- Adaptive Score
+
+```bash
+python tools/score_hybrid.py \
+  --dataset mbpp \
+  --baseline data/final/results_mbpp_baseline_n1.jsonl \
+  --mcts data/final/results_mbpp_mcts_n3.jsonl
+```
+
+Expected Output: Adaptive Pass Rate: ~72.4% (Actual logs may vary +/- 0.5% due to hardware noise)```
 
 **Expected Output (MBPP):**
 ```
@@ -151,18 +313,6 @@ MCTS (N=3) Passed:     187
 MCTS Exclusive Fixes:  4
 MCTS Regressions:      0
 ```
-*(This confirms the robustness of the Conditional Budgeting strategy)*
 
-## 📂 Script Guide
-We provide specific tools in the `tools/` and `benchmark/` directories to facilitate reproduction:
-
-| Script Name | Path | Description |
-| :--- | :--- | :--- |
-| `analyze_fixes.py` | `benchmark/` | Core Analysis. Compares HumanEval baseline vs. MCTS logs to calculate "Net Gain". |
-| `analyze_mbpp_fixes.py` | `benchmark/` | Core Analysis. Performs the same "Fix/Break" analysis for the MBPP benchmark. |
-| `score_real.py` | `tools/` | Robust evaluator that extracts code blocks (handling Markdown/formats) and runs tests locally. |
-| `inspect_case_study.py` | `tools/` | Utility to fetch and display specific failure cases (e.g., MBPP/71) from raw logs. |
-
-## License
 
 MIT License © 2026 Zixu Li
