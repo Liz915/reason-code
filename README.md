@@ -5,9 +5,10 @@
 </p>
 
 ## Overview
-This repository contains the implementation of Reason-Code, submitted to the ACL Industry Track.
+This repository contains the implementation of Reason-Code which is ready to submit to the ACL Industry Track.
 
 We propose an inference-time system that treats code generation as a search problem. By integrating Monte Carlo Tree Search (MCTS) with a lightweight local sandbox, Reason-Code detects and filters incorrect programs before returning a final answer. The project emphasizes robustness and correctness over raw sampling-based accuracy, reflecting real-world deployment constraints.
+
 **Core Capabilities:**
 - **Search:** MCTS with UCB1 exploration and "Reflexion" (using stderr for self-correction).
 - **Safety:** All code runs in a sandbox; only passing code is returned.
@@ -18,57 +19,45 @@ The repository is organized to clearly separate core algorithms, evaluation code
 ```
 reason-code/
 ├── src/reason_code/
-│   ├── agent/
-│   │   ├── mcts.py            # Core MCTS algorithm (UCB1, expansion, backpropagation)
-│   │   └── reflexion.py       # Reflexion mechanism using execution feedback
-│   │
-│   ├── executor/
-│   │   ├── evaluator.py       # Binary Pass@1 evaluator with strict reward definition
-│   │   └── sandbox.py         # Isolated execution environment for safe code testing
-│   │
-│   ├── models/
-│   │   ├── base.py            # Abstract LLM interface
-│   │   ├── llm.py             # Local / API-based LLM adapter
-│   │   └── router.py          # Lightweight model routing (used in experiments)
-│   │
-│   ├── tools/                 # Minimal tool registry (not used in experiments)
-│   │   ├── registry.py
-│   │   └── builtins.py
-│   │
-│   ├── api/                   # Optional FastAPI service wrapper (not used in experiments)
-│   │   └── app.py
-│   │
-│   └── utils/
-│       ├── logger.py          # Structured logging
-│       └── trace.py           # Optional tracing utilities
-│
-├── benchmarks/
-│   ├── run_paper_experiments.py   # Main entry for HumanEval experiments
-│   └── run_mbpp.py                # Main entry for MBPP experiments
-│
-├── tools/
-│   ├── analyze_fixes.py           # Fix / Break / Net Gain analysis (main metric)
-│   ├── analyze_mbpp_fixes.py
-│   ├── score_best_of_n.py         # Oracle Best-of-N (upper bound, reference only)
-│   └── plot_figure*.py            # Scripts for Figures 1–3 in the paper
-│
-├── Figures/
-│   ├── fig1_system.pdf            # System overview (Figure 1)
-│   ├── fig2_efficiency.pdf        # Efficiency / Pareto frontier (Figure 2)
-│   └── fig3_robustness.pdf        # Fix/Break robustness analysis (Figure 3)
-│
-├── Experimental/                  # Research prototypes and legacy experiments
-│   └── legacy/                    # Not used in reported experiments
-│
-├── examples/
-│   └── demo_workflow.py           # Demonstration of extensible workflow abstraction
-│
-├── tests/
-│   └── test_basic.py              # Sanity checks
-│
-├── requirements.txt
-└── README.md
+│   ├── agent/       # [Core] MCTS algorithm & Reflexion logic
+│   ├── executor/    # [Core] Sandboxed execution & evaluation metrics
+│   ├── models/      # LLM interfaces (supports Local/API models)
+│   ├── workflow/    # Orchestration engine for complex tasks
+│   └── tools/       # Tool registry (extensible plugin system)
+├── benchmark/       # Scripts for reproducing paper results (HumanEval/MBPP)
+├── data/            # Pre-computed logs and datasets
+└── examples/        # Demonstration scripts
 ```
+**Note**: The core logic resides in src/reason_code/agent (Decision Making) and src/reason_code/executor (Environment Feedback)
+
+**🎯 Artifact Scope for Reviewers**
+To simplify evaluation, only the following core components are required to reproduce the paper's results:
+- `src/reason_code/agent/`: The MCTS decision-making logic.
+- `src/reason_code/executor/`: The sandboxed execution and reward computation.
+- `benchmarks/`: The experiment entry points.
+
+*Note: Modules like `workflow`, `tools`, and `api` are provided as system extensions for industrial deployment but are not part of the core experimental loop.*
+
+## 🔑 Key Methodology
+We treat code generation as a step‑by‑step decision process, moving away from one‑time decoding or simple ranking (Best‑of‑N).
+
+- **State**: the current incomplete or complete code candidate.
+
+- **Action**: each LLM generation step (e.g., suggesting a fix or a new code snippet).
+
+- **Reward**: strictly pass/fail (1.0 if all tests pass, 0.0 otherwise), determined by sandboxed execution.
+
+This setup directly reduces reward hacking and avoids silent failures that often occur in heuristic‑based methods.
+
+## 📊 Evaluation & Benchmarks
+We evaluate on standard code generation benchmarks: HumanEval and MBPP.
+
+### Experimental Protocol
+Each candidate is evaluated in a strict three-stage pipeline:
+
+1. **Syntax Check**: AST parsing verification.
+2. **Static Analysis**: Basic linter checks.
+3. **Runtime Execution**: Execution against hidden test cases in an isolated environment.
 
 ## 📊 Main Results
 Our method matches the performance of computationally expensive baselines while maintaining a low inference cost suitable for edge deployment.
@@ -89,6 +78,14 @@ Our method matches the performance of computationally expensive baselines while 
 
 ***Note on MBPP Baseline:** The reported baseline (71.2%) uses the **Sanitized** split with an improved prompt, providing a stronger reference point than the original paper (48.2%).*
 
+### Claims Supported by This Artifact
+This repository explicitly supports the following scientific claims made in the paper:
+
+* **Efficiency (Table 1)**: Reason-Code achieves comparable Pass@1 performance to Best-of-N sampling (Oracle) but with **~1.5x** relative cost, compared to 10x for the baseline.
+* **Pareto Improvement (Figure 2)**: The adaptive MCTS strategy pushes the Pareto frontier of accuracy vs. cost significantly beyond standard sampling methods.
+* **Robustness (Figure 3)**: The conditional budget mechanism ensures **Zero Regression** (as verified by `analyze_fixes.py`), meaning it fixes hard problems without breaking simple ones.
+
+*All claims can be verified using the provided scripts and released execution logs.*
 **Key Insights:**
 - **Cost Efficiency:** The "Cost" column denotes relative token consumption compared to Greedy Decoding. Our adaptive strategy achieves SOTA performance at ~1.5× cost, whereas standard Best-of-N sampling requires 10.0×.
 - **Zero Regression:** Unlike static search, the conditional mechanism prevents the model from over-complicating simple problems, ensuring previously correct solutions are preserved.
