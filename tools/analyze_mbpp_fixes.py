@@ -23,9 +23,7 @@ def extract_code(text):
 def check_pass(code, task_data):
     if not code: return False
     
-    # 🔥 核心修复：移除 try-except 缩进块
-    # 直接拼接测试代码。如果 assert 失败，脚本会报错退出，
-    # 只要没打印 "ALL_TESTS_PASSED"，execute_code 就知道是挂了。
+    
     full_script = f"""
 import math
 import heapq
@@ -48,7 +46,7 @@ def main():
     # 1. 加载原始题目（获取测试用例）
     problems = {}
     try:
-        with open("data_mbpp.jsonl", "r") as f:
+        with open("data/final/data_mbpp.jsonl", "r") as f:
             for line in f:
                 d = json.loads(line)
                 problems[d['task_id']] = d
@@ -59,7 +57,7 @@ def main():
     # 2. 加载 Baseline (N=1)
     baseline_passed = set()
     try:
-        with open("results_mbpp_baseline_n1.jsonl", "r") as f:
+        with open("data/final/results_mbpp_baseline_n1.jsonl", "r") as f:
             for line in f:
                 if not line.strip(): continue
                 d = json.loads(line)
@@ -76,7 +74,7 @@ def main():
     # 3. 加载 MCTS (N=3)
     mcts_passed = set()
     try:
-        with open("results_mbpp_mcts_n3.jsonl", "r") as f:
+        with open("data/final/results_mbpp_mcts_n3.jsonl", "r") as f:
             for line in f:
                 if not line.strip(): continue
                 d = json.loads(line)

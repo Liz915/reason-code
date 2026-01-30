@@ -41,7 +41,7 @@ def main():
     print("正在分析 Baseline (N=1)...")
     baseline_passed = set()
     try:
-        with open("results_baseline_n1.jsonl", "r") as f:
+        with open("data/final/results_baseline_n1.jsonl", "r") as f:
             for line in f:
                 if not line.strip(): continue
                 d = json.loads(line)
@@ -55,7 +55,7 @@ def main():
     print("正在分析 MCTS (N=3)...")
     mcts_passed = set()
     try:
-        with open("results_mcts_n3.jsonl", "r") as f:
+        with open("data/final/results_mcts_n3.jsonl", "r") as f:
             for line in f:
                 if not line.strip(): continue
                 d = json.loads(line)

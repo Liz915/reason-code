@@ -1,4 +1,5 @@
 import math
+import random
 import asyncio
 from dataclasses import dataclass, field
 from typing import List, Optional, Any
@@ -26,15 +27,20 @@ class Node:
         return (self.wins / self.visits) + c * math.sqrt(math.log(parent_visits) / self.visits)
 
 class EnhancedMCTS:
-    def __init__(self, root_code: str, n_simulations: int = 3, n_candidates: int = 1):
+    def __init__(self, root_code: str, n_simulations: int = 3, n_candidates: int = 1, selection_strategy: str = "ucb"):
+        """
+        Args:
+            selection_strategy: "ucb" for standard MCTS, "random" for ablation study.
+        """
         self.root = Node(code=root_code, parent=None)
         self.n_simulations = n_simulations
         self.n_candidates = n_candidates
+        self.selection_strategy = selection_strategy  # ✅ 新增：策略控制
 
     async def run(self, test_runner: str):
         # 日志记录开始
         root_preview = self.root.code[:50].replace("\n", "\\n") + "..."
-        logger.info("mcts_start", n_simulations=self.n_simulations, root_code_preview=root_preview)
+        logger.info("mcts_start", n_simulations=self.n_simulations, strategy=self.selection_strategy, root_code_preview=root_preview)
         
         for i in range(self.n_simulations):
             # 1. Selection
@@ -58,10 +64,14 @@ class EnhancedMCTS:
         return best.code if best else self.root.code
 
     def _select(self, node: Node) -> Node:
-        # 如果当前节点有孩子，应用 UCB 选择最优孩子
-        # 如果没有孩子（叶节点），就直接返回该节点进行扩展
+        # ✅ 核心修改：支持随机选择 (Ablation Study)
         while node.children:
-            node = max(node.children, key=lambda n: n.ucb_score())
+            if self.selection_strategy == "random":
+                # Ablation: 随机选择子节点，模拟无指导的随机搜索
+                node = random.choice(node.children)
+            else:
+                # Standard: UCB 选择
+                node = max(node.children, key=lambda n: n.ucb_score())
         return node
 
     def _get_best_child(self):
@@ -80,7 +90,6 @@ class EnhancedMCTS:
         prompt = self._build_prompt(node)
         
         # 2. 生成候选代码
-        # 注意：llm.py 已经配置好 force_sample，这里只需传入 mode
         candidates = await generate_code_candidates(prompt, n=self.n_candidates, mode=mode)
         eval_results = await evaluate_candidates_async(candidates, test_runner)
         
@@ -98,11 +107,12 @@ class EnhancedMCTS:
             node.children.append(child_node)
             
             # [Reflexion Branch]: 只有当原始代码有错，且是运行时错误时，尝试生成修正节点
-            # 这是一个“机会主义”扩展：如果修好了，就加一个更强的兄弟节点
             if not res["overall"]["passed"] and res["overall"]["failed_at"] == "level_3":
                 error_msg = res["level_3"]["message"]
-                error_preview = error_msg.split('\n')[-1][:50]
+                # 简单防错
+                if not error_msg: error_msg = "Unknown Error"
                 
+                error_preview = error_msg.split('\n')[-1][:50]
                 logger.info("reflexion_attempt", error_preview=error_preview)
                 
                 # 尝试修复
@@ -117,28 +127,24 @@ class EnhancedMCTS:
                         logger.info("reflexion_success")
                         fixed_reward = 1.0 # 满分奖励
                     
-                    # [Node B]: 修复后的代码，作为 Node A 的兄弟（或者平行分支）加入
-                    # 这样树结构中同时保留了“原始尝试”和“修正尝试”
+                    # [Node B]: 修复后的代码
                     reflexion_node = Node(code=fixed_code, parent=node, evaluation_result=fixed_res)
                     reflexion_node.visits = 1
                     reflexion_node.wins = fixed_reward
                     node.children.append(reflexion_node)
                     
-                    # 更新本轮模拟的最佳奖励
                     step_best_reward = max(step_best_reward, fixed_reward)
 
         return step_best_reward
 
     def _build_prompt(self, node: Node) -> str:
-        # 显式判断是否为根节点，逻辑更严谨
         if node is self.root:
             return f"{node.code}\n\n# Instruction\nImplement the function above. Return COMPLETE code."
         
-        # 子节点扩展：基于错误信息构造 Prompt
         prompt = f"Current Code:\n```python\n{node.code}\n```\n\n"
         if node.evaluation_result:
             failed = node.evaluation_result["overall"]["failed_at"]
-            msg = node.evaluation_result[failed]["message"]
+            msg = node.evaluation_result.get(failed, {}).get("message", "Unknown error")
             prompt += f"[Error]\n{msg}\n\n"
         prompt += "Fix the code to pass the tests. Return ONLY the fixed code."
         return prompt
@@ -146,7 +152,5 @@ class EnhancedMCTS:
     def _backpropagate(self, node: Node, reward: float):
         while node:
             node.visits += 1
-            # 使用 max 更新策略（Best-of-N 风格）通常在代码生成中比平均值更有效
-            # 但为了保持标准 MCTS 定义，这里用累加，Selection 时用平均值
             node.wins += reward
             node = node.parent
