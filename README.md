@@ -125,6 +125,15 @@ We provide a suite of tools in `tools/` to analyze logs and visualize search tra
 * `score_real.py`: A strict, local executor that calculates Pass@1. Handles markdown stripping and timeout safety.
 * `score_hybrid.py`: Calculates the Adaptive/Hybrid Strategy score.
 * `score_best_of_n.py`: Calculates Oracle Pass@k (Upper Bounds).
+* `calc_latency.py`: Computes wall-clock latency statistics from execution logs.
+  - Reports average latency and P95 latency across all tasks.
+  - Used to generate the latency numbers in **Table 2 (Efficiency and Ablation)**.
+  - Latency includes model inference and execution time, but excludes dataset loading.
+  - Usage:
+    ```bash
+    python tools/calc_latency.py results_mbpp_*.jsonl
+    ```
+
 
 ### Inspection Tools (Qualitative Analysis)
 * **`inspect_case_study.py`**: A visualizer for `success_cases.jsonl`.
@@ -132,6 +141,16 @@ We provide a suite of tools in `tools/` to analyze logs and visualize search tra
     * *Function*: Prints a side-by-side comparison of the Baseline's error vs. Reason-Code's fix. This was used to generate the examples in **Appendix B**.
 * `sort_and_inspect.py`: Helper script to sort logs by Task ID and find specific regression cases.
 
+### Inspection Tools (Diagnostics)
+
+* **`analyze_depth.py`**: Provides a proxy analysis of reasoning depth.
+  - Estimates complexity using generated code length distribution.
+  - This analysis is intended as qualitative evidence of deeper reasoning behavior.
+  - Precise tree depth requires detailed execution traces (see `n10_local_log.txt`).
+  - Usage:
+    ```bash
+    python tools/analyze_depth.py results_mbpp_mcts_n3.jsonl
+    ```
 ## 💡 Case Study: Structural Refactoring under Execution Constraints
 Reason-Code goes beyond simple bug fixes; it can perform structural refactoring to satisfy execution constraints.
 
@@ -311,5 +330,17 @@ MCTS Exclusive Fixes:  4
 MCTS Regressions:      0
 ```
 
+### Experiment C: Efficiency and Ablation (MBPP)
 
+This experiment corresponds to Table 2 in the paper and compares different
+search strategies under the same simulation budget.
+
+To reproduce the ablation study:
+
+```bash
+python run_mbpp.py --mode baseline --n 1
+python run_mbpp.py --mode mcts --n 3 --strategy random
+python run_mbpp.py --mode mcts --n 3 --strategy ucb
+python tools/calc_latency.py results_mbpp_*.jsonl
+```
 MIT License © 2026 Zixu Li
