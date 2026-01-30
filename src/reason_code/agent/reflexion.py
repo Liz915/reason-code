@@ -38,7 +38,7 @@ async def attempt_fix(code: str, error_msg: str, test_runner: str) -> str:
     prompt = construct_fix_prompt(code, error_msg, test_runner)
 
     try:
-        # 🔥 关键修改 1: 传入 force_sample=True
+        # 传入 force_sample=True
         # 我们需要一定的温度 (0.5) 来让模型产生"不同于之前"的修复思路。
         # 如果不加 force_sample，llm.py 会因为 n=1 而强制使用 Greedy (T=0)，导致模型一直重复生成同样的错误代码。
         candidates = _local_model.generate(
@@ -52,7 +52,7 @@ async def attempt_fix(code: str, error_msg: str, test_runner: str) -> str:
         if candidates:
             fixed_code = candidates[0]
             
-            # 🔥 关键修改 2: 使用正则进行更鲁棒的结构检查
+            # 使用正则进行更鲁棒的结构检查
             # 旧逻辑: if "def " not in fixed_code: (容易误杀)
             # 新逻辑: 只要包含 "def 函数名" 结构即可，允许前面有 import 或 helper function
             if not re.search(r"def\s+\w+", fixed_code):

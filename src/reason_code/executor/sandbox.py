@@ -50,7 +50,7 @@ class Sandbox:
             self.start()
 
         # 包装代码：捕获超时和错误
-        # 注意：这里我们把 timeout 参数注入到 signal.alarm 中
+        # 这里我们把 timeout 参数注入到 signal.alarm 中
         wrapped_code = f"""
 import signal
 import sys
@@ -79,7 +79,7 @@ finally:
             stdout = exec_result.output[0].decode() if exec_result.output[0] else ""
             stderr = exec_result.output[1].decode() if exec_result.output[1] else ""
             
-            # ✅ 关键修改：如果 stderr 有内容，返回 Error；否则返回 stdout 内容供检查
+            # 如果 stderr 有内容，返回 Error；否则返回 stdout 内容供检查
             if stderr:
                 return f"Error: {stderr.strip()}"
             return stdout if stdout else "No Output"

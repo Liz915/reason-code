@@ -16,7 +16,7 @@ def setup_logger():
         level=logging.INFO,
     )
 
-    # 2. 配置 structlog (让日志变成 JSON 格式，或者漂亮的彩色文本)
+    # 2. 配置 structlog (让日志变成 JSON 格式)
     structlog.configure(
         processors=[
             structlog.stdlib.filter_by_level,  # 过滤掉等级太低的日志
@@ -26,9 +26,7 @@ def setup_logger():
             structlog.processors.TimeStamper(fmt="iso"), # 加上精确时间戳
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info, # 如果报错，显示详细堆栈
-            # 下面这一行决定了输出格式：
-            # 如果是开发环境，用 ConsoleRenderer (彩色好看)
-            # 如果是生产环境，通常用 JSONRenderer (方便机器分析)
+            # 开发环境，用 ConsoleRenderer
             structlog.dev.ConsoleRenderer()  
         ],
         context_class=dict,
