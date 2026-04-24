@@ -1,11 +1,10 @@
-# --- Python 通用 ---
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 build/
-develop-eggs/
 dist/
 downloads/
 eggs/
@@ -22,56 +21,65 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# --- 虚拟环境 (绝对不能传) ---
+# Virtual environments
 venv/
 env/
 ENV/
 .venv/
 
-# --- 环境变量 & 敏感信息 (绝对不能传) ---
+# Secrets / local env
 .env
 .env.local
 
-# --- Mac 系统文件 ---
+# OS / editor
 .DS_Store
-
-# --- IDE 配置 ---
 .vscode/
 .idea/
 
-# --- 运行时日志 & 临时数据 ---
+# Logs / temporary outputs
 logs/
 *.log
-*.jsonl
-*.csv
-humaneval_results_*.jsonl
-results_*.jsonl
 
-# --- 大模型权重  ---
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local caches
+.cache/
+.hf_cache/
+hf_cache/
+huggingface/
+mlx_cache/
+
+# Large local artifacts / checkpoints
+backup_1.5b/
 lora-reason-coder-v3/
 *.pth
 *.bin
 *.safetensors
 *.pt
-# --- previous data file ---
-backup_1.5b/
 
-# --- Docker ---
+# Docker / tracing
 .docker/
-
-# --- Phoenix / OpenTelemetry ---
 .phoenix/
 phoenix.db
 
-# --- 测试缓存 ---
-.pytest_cache/
-.coverage
-htmlcov/
+# Local paper drafting files
+paperdraft.tex
+paperdraft2.tex
+longpaperdraft.tex
+custom.bib
+Reason_Code_ACL_Industry.pdf
 
-# --- HuggingFace / Transformers ---
-.cache/
-hf_cache/
-huggingface/
+# Internal rebuttal packaging
+rebuttal_logs_and_draft_20260328/
+rebuttal_logs_and_draft_20260328.zip
+results_stats/
+results_staging/
+results_fairness_mbpp_formal_fix1/
 
-# --- MLX ---
-mlx_cache/
+# Keep only curated public result artifacts
+results_fairness/
+!released_results/
+!released_results/**

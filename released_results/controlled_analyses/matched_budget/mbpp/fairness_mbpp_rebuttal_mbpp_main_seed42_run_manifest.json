@@ -1,0 +1,21 @@
+{
+  "benchmark": "mbpp",
+  "best_of_n": 3,
+  "enable_timing_breakdown": true,
+  "max_model_calls_mcts": 4,
+  "max_repair_rounds": 3,
+  "max_tasks": 0,
+  "max_tokens_per_call": 600,
+  "range_end": null,
+  "range_start": null,
+  "resolved_timing_tag": "latency_mbpp_main_seed42",
+  "seed": 42,
+  "selected_methods": [
+    "best_of_n",
+    "reflexion_only",
+    "ucb_mcts"
+  ],
+  "smoke": false,
+  "tag": "rebuttal_mbpp_main_seed42",
+  "temperature": 0.5
+}
